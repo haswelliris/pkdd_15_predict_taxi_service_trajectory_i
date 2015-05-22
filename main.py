@@ -122,16 +122,16 @@ def explore(df):
     draw_map(df['DEST_LON'], df['DEST_LAT'], 2, 'Reds')
 
 def main():
-    if os.path.isfile('./data/train.p'):
-        print('Reading Pickle')
-        df = pd.read_pickle('./data/train.p')
+    if os.path.isfile('./data/data.hdf'):
+        print('Reading HDF')
+        df = pd.read_hdf('./data/data.hdf', 'train')
     else:
         print('Reading CSV')
         df = pd.read_csv('./data/train.csv')
         print('Procesing DF')
         df = process_df(df)
-        print('Saving to Pickle')
-        df.to_pickle('./data/train.p')
+        print('Saving to HDF')
+        df.to_hdf('./data/data.hdf', 'train')
 
     print('Mapping DF')
     explore(df)
