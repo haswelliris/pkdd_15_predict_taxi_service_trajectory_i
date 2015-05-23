@@ -63,9 +63,9 @@ def process_df(df, train=True):
     df['SECOND'] = df['TIMESTAMP'].dt.second
     df['SECONDOFDAY'] = df['MINUTEOFDAY'] * 60 + df['SECOND']
     df['WEEKDAY'] = df['TIMESTAMP'].dt.weekday
-    df['POLYLINE'] = df['POLYLINE'].map(lambda x: json.loads(x))
-    df['POLYLINE'] = df['POLYLINE'].map(lambda x: np.array(x))
-    df['KNOWN_DURATION'] = df['POLYLINE'].map(lambda x: len(x)) * 15
+    df['POLYLINE'] = df['POLYLINE'].map(json.loads)
+    df['POLYLINE'] = df['POLYLINE'].map(np.array)
+    df['KNOWN_DURATION'] = df['POLYLINE'].map(len) * 15
     
     if train:
         df.drop(df[df['KNOWN_DURATION'] < 30].index, inplace=True)
@@ -81,7 +81,7 @@ def process_df(df, train=True):
         df['DEST_LON'] = df['DEST'].map(lambda x: x[0])
         df['DEST_LAT'] = df['DEST'].map(lambda x: x[1])
         df['POLYLINE'] = df['POLYLINE'].map(lambda x: x[:-1])
-        df['KNOWN_DURATION'] = df['KNOWN_DURATION'].map(lambda x: x - 15)
+        df['KNOWN_DURATION'] = df['KNOWN_DURATION'] - 15
         df.drop(['DEST', 'TRIP_ID'], axis=1, inplace=True)
         for column in ['ORIGIN_LON', 'ORIGIN_LAT', 'DEST_LON', 'DEST_LAT']:
             df = remove_outliers(df, column)
@@ -126,7 +126,7 @@ def explore(df):
     draw_map(df['ORIGIN_LON'], df['ORIGIN_LAT'])
     draw_map(df['DEST_LON'], df['DEST_LAT'], 2, 'Reds')
 
-def main(explore=False):
+def main(exp=False):
     if os.path.isfile('./data/data.hdf'):
         print('Reading HDF')
         train_df = pd.read_hdf('./data/data.hdf', 'train')
@@ -147,8 +147,7 @@ def main(explore=False):
         print('Saving Test to HDF')
         test_df.to_hdf('./data/data.hdf', 'test')
 
-
-    if explore:
+    if exp:
         print('Mapping Train DF')
         explore(train_df)
 
