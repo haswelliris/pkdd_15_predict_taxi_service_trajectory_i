@@ -160,7 +160,7 @@ def main(exp=False):
     train_data, cv_data, target_data, cv_target_data = cross_validation.train_test_split(
         train_data, target_data, test_size=0.2)
 
-    clf = ExtraTreesRegressor(n_estimators=100)
+    clf = ExtraTreesRegressor(n_estimators=100, n_jobs=-1)
     clf.fit(train_data, target_data)
     cv_predictions = clf.predict(cv_data)
 
