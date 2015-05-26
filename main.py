@@ -91,13 +91,18 @@ def process_df(df, train=True):
 
     try:
         print('Calculated average distance for short trips: {}'.format(process_df.average_short_distance))
-        print('Calculated average bearing for short trips: {}'.format(process_df.average_short_bearing))
+        print('Calculated average bearing for short trips in the left half: {}'.format(process_df.average_short_bearing_left))
+        print('Calculated average bearing for short trips in the right half: {}'.format(process_df.average_short_bearing_right))
     except AttributeError:
+        process_df.mid_lon = df['ORIGIN_LON'].mean()
         process_df.average_short_distance = df.loc[df['KNOWN_DURATION'] == 30, 'KNOWN_DISTANCE'].mean() / 2
-        process_df.average_short_bearing = df.loc[df['KNOWN_DURATION'] == 30, 'KNOWN_BEARING'].mean()
+        process_df.average_short_bearing_left = df.loc[df['ORIGIN_LON'] < process_df.mid_lon, 'KNOWN_BEARING'].mean()
+        process_df.average_short_bearing_right = df.loc[df['ORIGIN_LON'] >= process_df.mid_lon, 'KNOWN_BEARING'].mean()
     finally:
         df.loc[df['KNOWN_DURATION'] == 15, 'KNOWN_DISTANCE'] = process_df.average_short_distance
-        df.loc[df['KNOWN_DURATION'] == 15, 'KNOWN_BEARING'] = process_df.average_short_bearing
+        df.loc[(df['KNOWN_DURATION'] == 15) & (df['ORIGIN_LON'] < process_df.mid_lon), 'KNOWN_BEARING'] = process_df.average_short_bearing_left
+        df.loc[(df['KNOWN_DURATION'] == 15) & (df['ORIGIN_LON'] >= process_df.mid_lon), 'KNOWN_BEARING'] = process_df.average_short_bearing_right
+
 
 
     df.drop(['DAY_TYPE', 'MISSING_DATA', 'ORIGIN', 'POLYLINE', 'TIMESTAMP'], axis=1, inplace=True)
