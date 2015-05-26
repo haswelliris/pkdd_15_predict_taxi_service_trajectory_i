@@ -88,7 +88,18 @@ def process_df(df, train=True):
     
     df['KNOWN_DISTANCE'] = df['POLYLINE'].map(lambda x: haversine(x[0], x[-1]))
     df['KNOWN_BEARING'] = df['POLYLINE'].map(lambda x: bearing(x[0], x[-1]))
-    
+
+    try:
+        print('Calculated average distance for short trips: {}'.format(process_df.average_short_distance))
+        print('Calculated average bearing for short trips: {}'.format(process_df.average_short_bearing))
+    except AttributeError:
+        process_df.average_short_distance = df.loc[df['KNOWN_DURATION'] == 30, 'KNOWN_DISTANCE'].mean() / 2
+        process_df.average_short_bearing = df.loc[df['KNOWN_DURATION'] == 30, 'KNOWN_BEARING'].mean()
+    finally:
+        df.loc[df['KNOWN_DURATION'] == 15, 'KNOWN_DISTANCE'] = process_df.average_short_distance
+        df.loc[df['KNOWN_DURATION'] == 15, 'KNOWN_BEARING'] = process_df.average_short_bearing
+
+
     df.drop(['DAY_TYPE', 'MISSING_DATA', 'ORIGIN', 'POLYLINE', 'TIMESTAMP'], axis=1, inplace=True)
 
     return df
