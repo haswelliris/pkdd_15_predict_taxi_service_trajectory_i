@@ -85,6 +85,8 @@ def process_df(df, train=True):
         df.drop(['DEST', 'TRIP_ID'], axis=1, inplace=True)
         for column in ['ORIGIN_LON', 'ORIGIN_LAT', 'DEST_LON', 'DEST_LAT']:
             df = remove_outliers(df, column)
+
+    df = add_closest_station(df)
     
     df['KNOWN_DISTANCE'] = df['POLYLINE'].map(lambda x: haversine(x[0], x[-1]))
     df['KNOWN_BEARING'] = df['POLYLINE'].map(lambda x: bearing(x[0], x[-1]))
@@ -103,7 +105,7 @@ def process_df(df, train=True):
         df.loc[(df['KNOWN_DURATION'] == 15) & (df['ORIGIN_LON'] < process_df.mid_lon), 'KNOWN_BEARING'] = process_df.average_short_bearing_left
         df.loc[(df['KNOWN_DURATION'] == 15) & (df['ORIGIN_LON'] >= process_df.mid_lon), 'KNOWN_BEARING'] = process_df.average_short_bearing_right
 
-
+    df = add_closest_station(df)
 
     df.drop(['DAY_TYPE', 'MISSING_DATA', 'ORIGIN', 'POLYLINE', 'TIMESTAMP'], axis=1, inplace=True)
 
@@ -112,6 +114,23 @@ def process_df(df, train=True):
 def remove_outliers(df, column):
     summary = df[column].describe(percentiles=[0.01, 0.99])
     return df[(df[column] >= summary['1%']) & (df[column] <= summary['99%'])]
+
+def add_closest_station(df):
+    if os.path.isfile('./data/data.hdf'):
+        print('Reading HDF')
+        lookup_df = pd.read_hdf('./data/data.hdf', 'lookup')
+    else:
+        print('Reading CSV')
+        lookup_df = pd.read_csv('./data/metaData_taxistandsID_name_GPSlocation.csv')
+        df = df.reindex(df.ID).drop('ID', axis=1)
+        df.to_hdf('./data/data.hdf', 'lookup')
+
+    print('Adding closest stations')
+    df['CLOSEST_ID'] = df.apply(lambda row: lookup_df.apply(lambda x: haversine((x['Longitude'], x['Latitude']), (row['ORIGIN_LON'], row['ORIGIN_LAT'])), axis=1).idxmin(), axis=1)
+    df['CLOSEST_LON'] = df['CLOSEST_ID'].map(lambda x: lookup_df.loc[x]['Longitude'])
+    df['CLOSEST_LAT'] = df['CLOSEST_ID'].map(lambda x: lookup_df.loc[x]['Latitude'])
+
+    return df
 
 def draw_map(lon_column, lat_column, subplot=1, cmap='Blues'):
     plt.subplot(2, 1, subplot)
