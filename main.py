@@ -4,48 +4,42 @@ import datetime as dt
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from math import asin, atan2, cos, degrees, radians, sin, sqrt
 from mpl_toolkits.basemap import Basemap
 from sklearn import cross_validation, preprocessing
 from sklearn.ensemble import ExtraTreesRegressor
 
-def haversine(start, end):
-    """
-    Calculate the great circle distance between two points 
-    on the earth (specified in decimal degrees)
-    """
-    lon1, lat1 = start
-    lon2, lat2 = end
-    # convert decimal degrees to radians 
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+EARTH_RADIUS = 6371
 
-    # haversine formula 
-    dlon = lon2 - lon1 
-    dlat = lat2 - lat1 
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a)) 
-    r = 6371 # Radius of earth in kilometers. Use 3956 for miles
-    return c * r
+def haversine(start_lon, start_lat, end_lon, end_lat):
+    start_lon = np.radians(start_lon)
+    start_lat = np.radians(start_lat)
+    end_lon = np.radians(end_lon)
+    end_lat = np.radians(end_lat)
 
-def bearing(start, end):
-    lon1, lat1 = start
-    lon2, lat2 = end
+    dlon = end_lon - start_lon
+    dlat = end_lat - start_lat
 
-    lon1 = radians(lon1)
-    lat1 = radians(lat1)
-    lon2 = radians(lon2)
-    lat2 = radians(lat2)
+    a = np.sin(dlat/2)**2 + np.cos(start_lat) * np.cos(end_lat) * np.sin(dlon/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
 
-    long_diff = lon2 - lon1
-    x = sin(long_diff) * cos(lat2)
-    y = cos(lat1) * sin(lat2) - (sin(lat1) * cos(lat2) * cos(long_diff))
+    return np.nan_to_num(c * EARTH_RADIUS)
 
-    initial_bearing = atan2(x, y)
+def bearing(start_lon, start_lat, end_lon, end_lat):
+    start_lon = np.radians(start_lon)
+    start_lat = np.radians(start_lat)
+    end_lon = np.radians(end_lon)
+    end_lat = np.radians(end_lat)
 
-    initial_bearing = degrees(initial_bearing)
+    dlon = end_lon - start_lon
+    x = np.sin(dlon) * np.cos(end_lat)
+    y = np.cos(start_lat) * np.sin(end_lat) - (np.sin(start_lat) * np.cos(end_lat) * np.cos(dlon))
+
+    initial_bearing = np.arctan2(x, y)
+
+    initial_bearing = np.degrees(initial_bearing)
     compass_bearing = (initial_bearing + 360) % 360
     
-    return compass_bearing
+    return np.nan_to_num(compass_bearing)
 
 def process_df(df, train=True):
     df.drop(df[df['MISSING_DATA'] == True].index, inplace=True)
@@ -86,10 +80,12 @@ def process_df(df, train=True):
         for column in ['ORIGIN_LON', 'ORIGIN_LAT', 'DEST_LON', 'DEST_LAT']:
             df = remove_outliers(df, column)
 
-    df = add_closest_station(df)
-    
-    df['KNOWN_DISTANCE'] = df['POLYLINE'].map(lambda x: haversine(x[0], x[-1]))
-    df['KNOWN_BEARING'] = df['POLYLINE'].map(lambda x: bearing(x[0], x[-1]))
+    df['LAST_LOC'] = df['POLYLINE'].map(lambda x: x[-1])
+    df['LAST_LON'] = df['LAST_LOC'].map(lambda x: x[0])
+    df['LAST_LAT'] = df['LAST_LOC'].map(lambda x: x[1])
+
+    df['KNOWN_DISTANCE'] = haversine(df['ORIGIN_LON'].values, df['ORIGIN_LAT'].values, df['LAST_LON'].values, df['LAST_LAT'].values)
+    df['KNOWN_BEARING'] = bearing(df['ORIGIN_LON'].values, df['ORIGIN_LAT'].values, df['LAST_LON'].values, df['LAST_LAT'].values)
 
     try:
         print('Calculated average distance for short trips: {}'.format(process_df.average_short_distance))
@@ -107,7 +103,7 @@ def process_df(df, train=True):
 
     df = add_closest_station(df)
 
-    df.drop(['DAY_TYPE', 'MISSING_DATA', 'ORIGIN', 'POLYLINE', 'TIMESTAMP'], axis=1, inplace=True)
+    df.drop(['DAY_TYPE', 'MISSING_DATA', 'ORIGIN', 'LAST_LOC', 'POLYLINE', 'TIMESTAMP'], axis=1, inplace=True)
 
     return df
 
@@ -117,18 +113,26 @@ def remove_outliers(df, column):
 
 def add_closest_station(df):
     if os.path.isfile('./data/data.hdf'):
-        print('Reading HDF')
+        print('Reading Lookup HDF')
         lookup_df = pd.read_hdf('./data/data.hdf', 'lookup')
     else:
-        print('Reading CSV')
+        print('Reading Lookup CSV')
         lookup_df = pd.read_csv('./data/metaData_taxistandsID_name_GPSlocation.csv')
-        df = df.reindex(df.ID).drop('ID', axis=1)
-        df.to_hdf('./data/data.hdf', 'lookup')
+        lookup_df = lookup_df.reindex(lookup_df['ID']).drop(['ID', 'Descricao'], axis=1).dropna()
+        lookup_df.to_hdf('./data/data.hdf', 'lookup')
 
+    print('Creating lookup')
+    merged_df = pd.DataFrame(np.array(pd.tools.util.cartesian_product([df.index, lookup_df.index])).T, columns=['DF_INDEX', 'LOOKUP_INDEX'])
+    merged_df = merged_df.merge(df[['ORIGIN_LON', 'ORIGIN_LAT']], left_on='DF_INDEX', right_index=True).merge(lookup_df, left_on='LOOKUP_INDEX', right_index=True)
+    merged_df['DISTANCE'] = haversine(merged_df['ORIGIN_LON'], merged_df['ORIGIN_LAT'], merged_df['Longitude'], merged_df['Latitude'])
+    
     print('Adding closest stations')
-    df['CLOSEST_ID'] = df.apply(lambda row: lookup_df.apply(lambda x: haversine((x['Longitude'], x['Latitude']), (row['ORIGIN_LON'], row['ORIGIN_LAT'])), axis=1).idxmin(), axis=1)
-    df['CLOSEST_LON'] = df['CLOSEST_ID'].map(lambda x: lookup_df.loc[x]['Longitude'])
-    df['CLOSEST_LAT'] = df['CLOSEST_ID'].map(lambda x: lookup_df.loc[x]['Latitude'])
+    closest_df = merged_df[merged_df.groupby('DF_INDEX')['DISTANCE'].transform(np.min) == merged_df['DISTANCE']].drop_duplicates(['DF_INDEX', 'DISTANCE'])
+    closest_df.index = closest_df['DF_INDEX']
+    df['CLOSEST_ID']  = closest_df['LOOKUP_INDEX']
+    df['CLOSEST_DISTANCE'] = closest_df['DISTANCE']
+    df['CLOSEST_LON'] = closest_df['Longitude']
+    df['CLOSEST_LAT'] = closest_df['Latitude']
 
     return df
 
@@ -199,11 +203,9 @@ def main(exp=False):
     clf.fit(train_data, target_data)
     cv_predictions = clf.predict(cv_data)
 
-    results = []
-    for start, end in zip(cv_predictions, cv_target_data):
-        results.append(haversine(start, end))
+    results = haversine(cv_target_data[:,0], cv_target_data[:,1], cv_predictions[:,0], cv_predictions[:,1])
 
-    print('Average estimate was {} km off.'.format(sum(results)/len(results)))
+    print('Average estimate was {} km off.'.format(results.mean()))
 
     test_data = scaler.transform(test_df.drop(['TRIP_ID'], axis=1).values)
 
