@@ -38,7 +38,7 @@ def bearing(start_lon, start_lat, end_lon, end_lat):
 
     initial_bearing = np.degrees(initial_bearing)
     compass_bearing = (initial_bearing + 360) % 360
-    
+
     return np.nan_to_num(compass_bearing)
 
 def process_df(df, train=True):
@@ -60,10 +60,10 @@ def process_df(df, train=True):
     df['POLYLINE'] = df['POLYLINE'].map(json.loads)
     df['POLYLINE'] = df['POLYLINE'].map(np.array)
     df['KNOWN_DURATION'] = df['POLYLINE'].map(len) * 15
-    
+
     if train:
         df.drop(df[df['KNOWN_DURATION'] < 30].index, inplace=True)
-    
+
     df['ORIGIN'] = df['POLYLINE'].map(lambda x: x[0])
     df['ORIGIN_LON'] = df['ORIGIN'].map(lambda x: x[0])
     df['ORIGIN_LAT'] = df['ORIGIN'].map(lambda x: x[1])
@@ -125,7 +125,7 @@ def add_closest_station(df):
     merged_df = pd.DataFrame(np.array(pd.tools.util.cartesian_product([df.index, lookup_df.index])).T, columns=['DF_INDEX', 'LOOKUP_INDEX'])
     merged_df = merged_df.merge(df[['ORIGIN_LON', 'ORIGIN_LAT']], left_on='DF_INDEX', right_index=True).merge(lookup_df, left_on='LOOKUP_INDEX', right_index=True)
     merged_df['DISTANCE'] = haversine(merged_df['ORIGIN_LON'], merged_df['ORIGIN_LAT'], merged_df['Longitude'], merged_df['Latitude'])
-    
+
     print('Adding closest stations')
     closest_df = merged_df[merged_df.groupby('DF_INDEX')['DISTANCE'].transform(np.min) == merged_df['DISTANCE']].drop_duplicates(['DF_INDEX', 'DISTANCE'])
     closest_df.index = closest_df['DF_INDEX']
@@ -216,12 +216,22 @@ def main(exp=False):
         for trip_id, prediction in zip(test_df['TRIP_ID'], predictions):
             o.write('{},{},{}\n'.format(trip_id, prediction[1], prediction[0]))
 
+    cv_df = pd.DataFrame(scaler.inverse_transform(cv_data),
+        columns=train_df.drop(['DEST_LAT', 'DEST_LON'], axis=1).columns)
+
+    cv_df['DEST_LON'] = cv_target_data[:,0]
+    cv_df['DEST_LAT'] = cv_target_data[:,1]
+    cv_df['PDEST_LON'] = cv_predictions[:,0]
+    cv_df['PDEST_LAT'] = cv_predictions[:,1]
+    cv_df['DELTA'] = haversine(cv_df['DEST_LON'], cv_df['DEST_LAT'],
+        cv_df['PDEST_LON'], cv_df['PDEST_LAT'],)
+
     return locals()
-        
+
 
 if __name__ == '__main__':
     results = main()
-    
+
 
 
 
