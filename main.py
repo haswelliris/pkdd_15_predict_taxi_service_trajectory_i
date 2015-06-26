@@ -5,8 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from mpl_toolkits.basemap import Basemap
-from sklearn import cross_validation, preprocessing
+from sklearn.cross_validation import train_test_split
 from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 EARTH_RADIUS = 6371
 
@@ -190,26 +192,30 @@ def main(exp=False):
         print('Mapping Train DF')
         explore(train_df)
 
-    print('Training and running model')
-    scaler = preprocessing.StandardScaler()
-    train_data = train_df.drop(['DEST_LON', 'DEST_LAT'], axis=1).values
-    train_data = scaler.fit_transform(train_data)
-    target_data = np.array([train_df['DEST_LON'], train_df['DEST_LAT']]).T
+    print('Preparing pipeline')
+    scaler = StandardScaler()
+    etr = ExtraTreesRegressor(n_estimators=100, n_jobs=-1)
+    pipe = Pipeline([('scaler', scaler), ('etr', etr)])
 
-    train_data, cv_data, target_data, cv_target_data = cross_validation.train_test_split(
+    print('Training model')
+    train_data = train_df.drop(['DEST_LON', 'DEST_LAT'], axis=1).values
+    target_data = np.array([train_df['DEST_LON'], train_df['DEST_LAT']]).T
+    test_data = test_df.drop(['TRIP_ID'], axis=1).values
+
+    train_data, cv_data, target_data, cv_target_data = train_test_split(
         train_data, target_data, test_size=0.2)
 
-    clf = ExtraTreesRegressor(n_estimators=100, n_jobs=-1)
-    clf.fit(train_data, target_data)
-    cv_predictions = clf.predict(cv_data)
+    pipe.fit(train_data, target_data)
+
+    print('Predicting CV results')
+    cv_predictions = pipe.predict(cv_data)
 
     results = haversine(cv_target_data[:,0], cv_target_data[:,1], cv_predictions[:,0], cv_predictions[:,1])
 
     print('Average estimate was {} km off.'.format(results.mean()))
 
-    test_data = scaler.transform(test_df.drop(['TRIP_ID'], axis=1).values)
-
-    predictions = clf.predict(test_data)
+    print('Predicting test results')
+    predictions = pipe.predict(test_data)
 
     with open('./data/output.csv', 'w') as o:
         o.write('TRIP_ID,LATITUDE,LONGITUDE\n')
@@ -224,7 +230,7 @@ def main(exp=False):
     cv_df['PDEST_LON'] = cv_predictions[:,0]
     cv_df['PDEST_LAT'] = cv_predictions[:,1]
     cv_df['DELTA'] = haversine(cv_df['DEST_LON'], cv_df['DEST_LAT'],
-        cv_df['PDEST_LON'], cv_df['PDEST_LAT'],)
+        cv_df['PDEST_LON'], cv_df['PDEST_LAT'])
 
     return locals()
 
