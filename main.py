@@ -178,6 +178,34 @@ def explore(df):
     draw_map(df['ORIGIN_LON'], df['ORIGIN_LAT'])
     draw_map(df['DEST_LON'], df['DEST_LAT'], 2, 'Reds')
 
+def heatmap():
+    if os.path.isfile('./data/heatmap.png'):
+        plt.imshow(plt.imread('./data/heatmap.png'))
+    else:
+        # https://www.kaggle.com/mcwitt/pkdd-15-predict-taxi-service-trajectory-i/heatmap
+        polyline = pd.read_csv('./data/train.csv',
+                               usecols=['POLYLINE'],
+                               converters={'POLYLINE': lambda x: json.loads(x)})
+        bins = 1000
+        lat_min, lat_max = 41.04961, 41.24961
+        lon_min, lon_max = -8.71099, -8.51099
+        z = np.zeros((bins, bins))
+        latlon = np.array([(lat, lon)
+                           for path in polyline['POLYLINE']
+                           for lon, lat in path if len(path) > 0])
+
+        z += np.histogram2d(*latlon.T, bins=bins,
+                            range=[[lat_min, lat_max],
+                                   [lon_min, lon_max]])[0]
+
+        log_density = np.log(1+z)
+
+        plt.imshow(log_density[::-1,:], # flip vertically
+                   extent=[lat_min, lat_max, lon_min, lon_max])
+
+        plt.savefig('./data/heatmap.png')
+
+
 def main(exp=False):
     if os.path.isfile('./data/data.hdf'):
         print('Reading HDF')
