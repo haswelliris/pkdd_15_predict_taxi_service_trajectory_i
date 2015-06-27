@@ -74,6 +74,8 @@ def process_df(df, train=True):
         for chunk in processed_chunks:
             df = df.append(chunk, ignore_index=True)
 
+    df.to_hdf('./data/data.hdf', 'raw_{}'.format('train' if train else 'test'))
+
     if train:
         df.drop(df[df['KNOWN_DURATION'] < 30].index, inplace=True)
 
