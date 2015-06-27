@@ -2,6 +2,7 @@ import json
 import os.path
 import datetime as dt
 import matplotlib.pyplot as plt
+import multiprocessing as mp
 import numpy as np
 import pandas as pd
 from mpl_toolkits.basemap import Basemap
@@ -43,7 +44,7 @@ def bearing(start_lon, start_lat, end_lon, end_lat):
 
     return np.nan_to_num(compass_bearing)
 
-def process_df(df, train=True):
+def process_chunk(df):
     df.drop(df[df['MISSING_DATA'] == True].index, inplace=True)
     call_map = {'A': 1, 'B': 2, 'C': 3}
     df['CALL_TYPE'] = df['CALL_TYPE'].map(call_map)
@@ -63,6 +64,16 @@ def process_df(df, train=True):
     df['POLYLINE'] = df['POLYLINE'].map(np.array)
     df['KNOWN_DURATION'] = df['POLYLINE'].map(len) * 15
 
+    return df
+
+def process_df(df, train=True):
+    df_chunks = np.array_split(df, 4)
+    with mp.Pool() as p:
+        processed_chunks = p.map(process_chunk, df_chunks)
+        df = pd.DataFrame([], columns=df.columns)
+        for chunk in processed_chunks:
+            df = df.append(chunk, ignore_index=True)
+
     if train:
         df.drop(df[df['KNOWN_DURATION'] < 30].index, inplace=True)
 
@@ -78,7 +89,7 @@ def process_df(df, train=True):
         df['DEST_LAT'] = df['DEST'].map(lambda x: x[1])
         df['POLYLINE'] = df['POLYLINE'].map(lambda x: x[:-1])
         df['KNOWN_DURATION'] = df['KNOWN_DURATION'] - 15
-        df.drop(['DEST', 'TRIP_ID'], axis=1, inplace=True)
+        df.drop(['DEST'], axis=1, inplace=True)
         for column in ['ORIGIN_LON', 'ORIGIN_LAT', 'DEST_LON', 'DEST_LAT']:
             df = remove_outliers(df, column)
 
@@ -198,7 +209,7 @@ def main(exp=False):
     pipe = Pipeline([('scaler', scaler), ('etr', etr)])
 
     print('Training model')
-    train_data = train_df.drop(['DEST_LON', 'DEST_LAT'], axis=1).values
+    train_data = train_df.drop(['TRIP_ID', 'DEST_LON', 'DEST_LAT'], axis=1).values
     target_data = np.array([train_df['DEST_LON'], train_df['DEST_LAT']]).T
     test_data = test_df.drop(['TRIP_ID'], axis=1).values
 
@@ -223,7 +234,7 @@ def main(exp=False):
             o.write('{},{},{}\n'.format(trip_id, prediction[1], prediction[0]))
 
     cv_df = pd.DataFrame(scaler.inverse_transform(cv_data),
-        columns=train_df.drop(['DEST_LAT', 'DEST_LON'], axis=1).columns)
+        columns=train_df.drop(['TRIP_ID', 'DEST_LAT', 'DEST_LON'], axis=1).columns)
 
     cv_df['DEST_LON'] = cv_target_data[:,0]
     cv_df['DEST_LAT'] = cv_target_data[:,1]
