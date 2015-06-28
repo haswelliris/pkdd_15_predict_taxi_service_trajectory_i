@@ -127,14 +127,10 @@ def remove_outliers(df, column):
     return df[(df[column] >= summary['1%']) & (df[column] <= summary['99%'])]
 
 def add_closest_station(df):
-    if os.path.isfile('./data/data.hdf'):
-        print('Reading Lookup HDF')
-        lookup_df = pd.read_hdf('./data/data.hdf', 'lookup')
-    else:
-        print('Reading Lookup CSV')
-        lookup_df = pd.read_csv('./data/metaData_taxistandsID_name_GPSlocation.csv')
-        lookup_df = lookup_df.reindex(lookup_df['ID']).drop(['ID', 'Descricao'], axis=1).dropna()
-        lookup_df.to_hdf('./data/data.hdf', 'lookup')
+    print('Reading Lookup CSV')
+    lookup_df = pd.read_csv('./data/metaData_taxistandsID_name_GPSlocation.csv')
+    lookup_df = lookup_df.reindex(lookup_df['ID']).drop(['ID', 'Descricao'], axis=1).dropna()
+    lookup_df.to_hdf('./data/data.hdf', 'lookup')
 
     print('Creating lookup')
     merged_df = pd.DataFrame(np.array(pd.tools.util.cartesian_product([df.index, lookup_df.index])).T, columns=['DF_INDEX', 'LOOKUP_INDEX'])
